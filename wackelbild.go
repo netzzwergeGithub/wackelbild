@@ -20,6 +20,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -43,7 +44,7 @@ func main() {
 	imageRightWidget := canvas.NewImageFromImage(initialImgRight)
 	imageRightWidget.FillMode = canvas.ImageFillContain
 
-	showAngle := 52.5
+	showAngle := 0.
 	combineImgs := getCombined(imageLeftWidget.Image, imageRightWidget.Image, showAngle)
 	// fmt.Println(combineImgs)
 
@@ -57,7 +58,19 @@ func main() {
 	centerTopText := canvas.NewText("Combined", color.Black)
 	stripedButton := widget.NewButton("Striped", func() { center_image.Image = combineImgs.striped; center_image.Refresh() })
 	compressedButton := widget.NewButton("Compressed", func() { center_image.Image = combineImgs.compressed; center_image.Refresh() })
-	centerTopContainer := container.NewHBox(centerTopText, stripedButton, compressedButton)
+	angle_binding := binding.BindFloat(&showAngle)
+	angle_Text := canvas.NewText("DUMMY", color.Black)
+	angle_binding.AddListener(binding.NewDataListener(func() {
+		combineImgs = getCombined(imageLeftWidget.Image, imageRightWidget.Image, showAngle)
+		center_image.Image = combineImgs.compressed
+		center_image.Refresh()
+		angle_Text.Text = fmt.Sprintf("current angle: %03d", int(showAngle))
+		angle_Text.Refresh()
+	}))
+	angle_binding.Reload()
+
+	angleSlider := widget.NewSliderWithData(0., 120., angle_binding)
+	centerTopContainer := container.NewVBox(container.NewHBox(centerTopText, stripedButton, compressedButton, angle_Text), angleSlider)
 	centerContainer := container.NewBorder(centerTopContainer, nil, nil, nil, centerImageContainer)
 
 	// backgroundRectRight := canvas.NewRectangle(color.NRGBA{R: 125, G: 125, B: 125, A: 0xff})
@@ -110,7 +123,7 @@ func getCombined(leftImg, rightImg image.Image, angle float64) *CombinedImages {
 		factorRight = 0
 	}
 
-	fmt.Println("factorLeft,factorRight", factorLeft, factorRight)
+	// fmt.Println("factorLeft,factorRight", factorLeft, factorRight)
 
 	stripedImageBounds := leftImg.Bounds()
 	stripedImageBounds.Max.X = leftImg.Bounds().Dx() + rightImg.Bounds().Dx()
@@ -162,24 +175,24 @@ func getCombined(leftImg, rightImg image.Image, angle float64) *CombinedImages {
 	compressed_img := image.NewRGBA(compressedImageBounds)
 	compressed_src_left := image.NewNRGBA(image.Rect(0, 0, int(compressedsliceWidthLeft), leftImg.Bounds().Max.Y))
 	compressed_src_right := image.NewNRGBA(image.Rect(0, 0, int(compressedsliceWidthRight), rightImg.Bounds().Max.Y))
-	fmt.Println("compressedsliceWidthLeft, compressedsliceWidthRight, compressedImageBounds, compressed_src_left.Bounds(),  compressed_src_right.Bounds()")
-	fmt.Println(compressedsliceWidthLeft, compressedsliceWidthRight, compressedImageBounds, compressed_src_left.Bounds(), compressed_src_right.Bounds())
+	// fmt.Println("compressedsliceWidthLeft, compressedsliceWidthRight, compressedImageBounds, compressed_src_left.Bounds(),  compressed_src_right.Bounds()")
+	// fmt.Println(compressedsliceWidthLeft, compressedsliceWidthRight, compressedImageBounds, compressed_src_left.Bounds(), compressed_src_right.Bounds())
 	targetStartX = 0
 	for index := 0; index < sliceCount; index++ {
 		startX := float64(sliceWidth) * float64(index)
 		endX := startX + float64(sliceWidth)
-		fmt.Println("left startX, endX", startX, endX)
+		// fmt.Println("left startX, endX", startX, endX)
 		// copy left
 		srcLeft := leftImg.Bounds().Intersect(image.Rectangle{Min: image.Pt(int(startX), 0), Max: image.Pt(int(endX), leftImg.Bounds().Max.Y)})
 		xdraw.ApproxBiLinear.Scale(compressed_src_left, compressed_src_left.Rect, leftImg, srcLeft.Bounds(), xdraw.Src, nil)
-		fmt.Println("index", index, "srcLeft", srcLeft)
+		// fmt.Println("index", index, "srcLeft", srcLeft)
 		startPoint := image.Pt(targetStartX, 0)
 		// fmt.Println(startPoint, srcLeft.Size())
 		r := image.Rectangle{startPoint, startPoint.Add(compressed_src_left.Rect.Max)}
 		// fmt.Println("r", r)
 		// startPointdraw := leftImg.Bounds().Min.Add(image.Pt(int(compressed_src_left.Rect.Max.X), 0))
 		startPointdraw := image.Pt(0, 0)
-		fmt.Println("r", r, "startPointdraw", startPointdraw)
+		// fmt.Println("r", r, "startPointdraw", startPointdraw)
 		draw.Draw(compressed_img, r, compressed_src_left, startPointdraw, draw.Src)
 		// add sliceWidth
 		targetStartX += int(compressedsliceWidthLeft)
