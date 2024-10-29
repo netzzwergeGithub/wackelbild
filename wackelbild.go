@@ -219,7 +219,7 @@ func getImageContainer(initialImg *image.Image, addFileLoader bool) *fyne.Contai
 	}
 	var top *fyne.Container
 	if addFileLoader {
-		openFile := widget.NewButton("Load Image", func() {})
+		openFile := widget.NewButtonWithIcon("Load Image", resourceOpenPng, func() {})
 		top = container.NewCenter(openFile)
 	}
 	backgroundRect := canvas.NewRectangle(color.NRGBA{R: 125, G: 125, B: 125, A: 0xff})
