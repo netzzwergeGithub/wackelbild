@@ -21,12 +21,16 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/storage"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
 func main() {
 
-	myApp := app.New()
+	myApp := app.NewWithID("de.netzzwerge.wackelbild.preferences")
+	window := myApp.NewWindow("MaxLayout")
 
 	initialImgLeft, _, err := image.Decode(bytes.NewReader(resourceJungfertigPng.Content()))
 	if err != nil {
@@ -36,46 +40,59 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	}
-
-	window := myApp.NewWindow("MaxLayout")
 	imageLeftWidget := canvas.NewImageFromImage(initialImgLeft)
 	imageLeftWidget.FillMode = canvas.ImageFillContain
 
 	imageRightWidget := canvas.NewImageFromImage(initialImgRight)
 	imageRightWidget.FillMode = canvas.ImageFillContain
 
-	showAngle := 0.
-	combineImgs := getCombined(imageLeftWidget.Image, imageRightWidget.Image, showAngle)
+	showAngle := -60.
+	combineImgs := getCombined(imageLeftWidget.Image, imageRightWidget.Image, math.Abs(showAngle))
 	// fmt.Println(combineImgs)
 
 	// backgroundRectLeft := canvas.NewRectangle(color.NRGBA{R: 125, G: 125, B: 125, A: 0xff})
 	// leftImageContainer := container.NewStack(backgroundRectLeft, image_left)
-	leftImageContainer := getImageContainer(&imageLeftWidget.Image, true)
 	backgroundRectCenter := canvas.NewRectangle(color.NRGBA{R: 205, G: 205, B: 205, A: 0xff})
 	center_image := canvas.NewImageFromImage(combineImgs.compressed)
 	center_image.FillMode = canvas.ImageFillContain
 	centerImageContainer := container.NewPadded(container.NewStack(backgroundRectCenter, center_image))
-	centerTopText := canvas.NewText("Combined", color.Black)
+
+	// centerTopText := canvas.NewText("Combined", color.Black)
 	stripedButton := widget.NewButton("Striped", func() { center_image.Image = combineImgs.striped; center_image.Refresh() })
 	compressedButton := widget.NewButton("Compressed", func() { center_image.Image = combineImgs.compressed; center_image.Refresh() })
 	angle_binding := binding.BindFloat(&showAngle)
-	angle_Text := canvas.NewText("DUMMY", color.Black)
+	angle_Text := widget.NewLabel("DUMMY")
+	fileOpener := dialog.NewFileOpen(func(uc fyne.URIReadCloser, err error) {}, window)
+	fileOpener.SetFilter(storage.NewMimeTypeFileFilter([]string{"image/jpeg", "image/png"}))
 	angle_binding.AddListener(binding.NewDataListener(func() {
-		combineImgs = getCombined(imageLeftWidget.Image, imageRightWidget.Image, showAngle)
+		combineImgs = getCombined(imageLeftWidget.Image, imageRightWidget.Image, math.Abs(showAngle))
 		center_image.Image = combineImgs.compressed
 		center_image.Refresh()
-		angle_Text.Text = fmt.Sprintf("current angle: %03d", int(showAngle))
-		angle_Text.Refresh()
+		angle_Text.SetText(fmt.Sprintf("current angle: %03d", int(math.Abs(showAngle))))
+		fileOpener.Show()
+		// angle_Text.Refresh()
 	}))
 	angle_binding.Reload()
 
-	angleSlider := widget.NewSliderWithData(0., 120., angle_binding)
-	centerTopContainer := container.NewVBox(container.NewHBox(centerTopText, stripedButton, compressedButton, angle_Text), angleSlider)
-	centerContainer := container.NewBorder(centerTopContainer, nil, nil, nil, centerImageContainer)
+	refeshCenterImage := func() {
+		combineImgs = getCombined(imageLeftWidget.Image, imageRightWidget.Image, math.Abs(showAngle))
+		center_image.Image = combineImgs.compressed
+		center_image.Refresh()
+	}
+
+	leftImageContainer := getImageContainer(imageLeftWidget, true, window, refeshCenterImage)
+	rightImageContainer := getImageContainer(imageRightWidget, true, window, refeshCenterImage)
+
+	angleSlider := widget.NewSliderWithData(-120., 0., angle_binding)
+	angleSlider.Orientation = 1
+	paddedSlider := container.NewGridWithRows(2, angleSlider, container.NewVBox(angle_Text, stripedButton, compressedButton))
+
+	// centerTopContainer := container.NewCenter(angle_Text)
+	centerContainer := container.NewBorder(nil, nil, paddedSlider, nil, centerImageContainer)
 
 	// backgroundRectRight := canvas.NewRectangle(color.NRGBA{R: 125, G: 125, B: 125, A: 0xff})
-	rightImageContainer := getImageContainer(&imageRightWidget.Image, true)
-	threeParts := container.New(&threePartsLayout{}, leftImageContainer, centerContainer, rightImageContainer)
+	// threeParts := container.New(&threePartsLayout{}, leftImageContainer, centerContainer, rightImageContainer)
+	threeParts := container.New(&twoPartsLayout{}, leftImageContainer, rightImageContainer, centerContainer)
 	backgroundRectGlobal := canvas.NewRectangle(color.NRGBA{R: 205, G: 205, B: 205, A: 0xff})
 	myContainer := container.NewStack(backgroundRectGlobal, threeParts)
 	window.SetContent(myContainer)
@@ -224,19 +241,39 @@ func getCombined(leftImg, rightImg image.Image, angle float64) *CombinedImages {
 
 }
 
-func getImageContainer(initialImg *image.Image, addFileLoader bool) *fyne.Container {
-	var imageCont *canvas.Image
-	if initialImg != nil {
-		imageCont = canvas.NewImageFromImage(*initialImg)
-		imageCont.FillMode = canvas.ImageFillContain
-	}
+func getImageContainer(imgContainer *canvas.Image, addFileLoader bool, window fyne.Window, refresher func()) *fyne.Container {
+
 	var top *fyne.Container
+
 	if addFileLoader {
-		openFile := widget.NewButtonWithIcon("Load Image", resourceOpenPng, func() {})
+
+		openFile := widget.NewButtonWithIcon("Load Image", theme.FileIcon(), func() {
+			dialog.ShowFileOpen(func(read fyne.URIReadCloser, err error) {
+
+				if read != nil {
+					fmt.Println("User has chosen:", read.URI().String())
+					img_loaded, err := loadImage(read.URI().Path())
+					if err != nil {
+
+						fmt.Println("Error loading image", read.URI().String(), err)
+						return
+
+					}
+					imgContainer.Image = img_loaded
+					imgContainer.Refresh()
+					refresher()
+
+				} else {
+					fmt.Println("User caneled:", err)
+				}
+
+			}, window)
+
+		})
 		top = container.NewCenter(openFile)
 	}
 	backgroundRect := canvas.NewRectangle(color.NRGBA{R: 125, G: 125, B: 125, A: 0xff})
-	imgStacked := container.NewStack(backgroundRect, container.NewPadded(imageCont))
+	imgStacked := container.NewStack(backgroundRect, container.NewPadded(imgContainer))
 	imageContainer := container.NewBorder(top, nil, nil, nil, imgStacked)
 	return imageContainer
 
